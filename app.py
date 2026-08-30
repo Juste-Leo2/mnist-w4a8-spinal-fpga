@@ -5,9 +5,9 @@ import logging
 from src.fpga_driver import FpgaHostBridge
 from src.pytorch_replica import infer_pytorch, MnistTorchReplica
 
-# Instanciation du driver série
-# Mettre mock=False quand la carte sera branchée et le module verilog UART prêt.
-# port="COM8" selon tes indications.
+# Serial driver instantiation
+# Set mock=False when the board is plugged in and the UART verilog module is ready.
+# port="COM8" based on user indication.
 driver = FpgaHostBridge(port="COM8", baudrate=115200, mock=False)
 
 # PyTorch W4A8 (simulated from quantized weights, mathematically bit-exact)
@@ -18,18 +18,18 @@ if not driver.mock:
     try:
         driver.load_weights("src/weights_w4a8.txt")
     except Exception as e:
-        logging.error(f"Erreur lors du chargement des poids : {e}")
+        logging.error(f"Error loading weights: {e}")
 
 def process_image(img_dict):
     """
-    Reçoit l'image du composant Sketchpad de Gradio (dictionnaire avec 'composite', 'background', etc.)
-    ou directement une matrice selon la version de Gradio.
+    Receives the image from Gradio's Sketchpad component (dict with 'composite', 'background', etc.)
+    or directly a matrix depending on the Gradio version.
     """
     if img_dict is None or (not isinstance(img_dict, dict) and not isinstance(img_dict, np.ndarray)):
         empty_res = {str(i): 0.0 for i in range(10)}
         return empty_res, empty_res, np.zeros((28, 28), dtype=np.uint8)
 
-    # Dans Gradio récent, le sketchpad envoie un dictionnaire avec 'composite'
+    # In recent Gradio, the sketchpad sends a dictionary with 'composite'
     if isinstance(img_dict, dict) and "composite" in img_dict:
         img_array = img_dict["composite"]
     else:
@@ -39,11 +39,11 @@ def process_image(img_dict):
         empty_res = {str(i): 0.0 for i in range(10)}
         return empty_res, empty_res, np.zeros((28, 28), dtype=np.uint8)
 
-    # L'image est souvent RGBA. On extrait le canal alpha ou on convertit en niveaux de gris.
-    # L'utilisateur dessine en blanc sur fond noir ou noir sur blanc.
+    # The image is often RGBA. We extract the alpha channel or convert to grayscale.
+    # The user draws in white on a black background or black on white.
     image = Image.fromarray(img_array)
     
-    # Si fond transparent, on met un fond noir
+    # If transparent background, add a black background
     if image.mode == 'RGBA':
         background = Image.new('RGBA', image.size, (0, 0, 0, 255))
         alpha_composite = Image.alpha_composite(background, image)
@@ -51,24 +51,24 @@ def process_image(img_dict):
     else:
         image = image.convert('L')
 
-    # Inverser si nécessaire (Gradio Sketchpad a souvent un fond blanc, ou un fond transparent. 
-    # S'il est blanc, on inverse pour avoir le dessin en blanc sur fond noir comme MNIST)
-    # Vérifions la couleur de fond (pixel 0,0)
+    # Invert if necessary (Gradio Sketchpad often has a white background or transparent. 
+    # If white, we invert to have white drawing on black background like MNIST)
+    # Check background color (pixel 0,0)
     bg_pixel = image.getpixel((0, 0))
     if bg_pixel > 127:
         image = ImageOps.invert(image)
 
-    # Récupérer la Bounding Box du chiffre (où les pixels > 0)
+    # Get the Bounding Box of the digit (where pixels > 0)
     bbox = image.getbbox()
     if bbox:
-        # On croppe autour du dessin
+        # Crop around the drawing
         image = image.crop(bbox)
         
-        # On rend l'image carrée en ajoutant du padding noir pour garder les proportions
+        # Make the image square by adding black padding to keep proportions
         width, height = image.size
         max_dim = max(width, height)
         
-        # On ajoute une petite marge (20% comme dans MNIST)
+        # Add a small margin (20% like in MNIST)
         padding = int(max_dim * 0.2)
         new_size = max_dim + padding * 2
         
@@ -78,63 +78,62 @@ def process_image(img_dict):
         square_img.paste(image, (paste_x, paste_y))
         image = square_img
     
-    # Redimensionnement final en 28x28 (anti-aliasing)
+    # Final resize to 28x28 (anti-aliasing)
     image = image.resize((28, 28), Image.Resampling.LANCZOS)
     
-    # Convertir en tableau Numpy de type uint8 (pour l'affichage UI: 0-255)
+    # Convert to Numpy array of type uint8 (for UI display: 0-255)
     img_data = np.array(image, dtype=np.uint8)
     
-    # Le réseau matériel quantifié attend EXPLICITEMENT des pixels 0 ou 1 !
+    # The quantized hardware network EXPLICITLY expects pixels 0 or 1!
     fpga_data = (img_data > 127).astype(np.uint8)
     
-    # L'aplatir en 784 octets
+    # Flatten to 784 bytes
     img_bytes = fpga_data.tobytes()
     
-    # Envoi au FPGA
+    # Send to FPGA
     logits_fpga = driver.run_inference(img_bytes)
     
-    # Inférence PyTorch W4A8
+    # PyTorch W4A8 Inference
     logits_torch_w4a8 = infer_pytorch(img_bytes, torch_model_w4a8)
     
     return logits_fpga, logits_torch_w4a8, img_data
 
-# --- Définition de l'interface Gradio ---
+# --- Gradio Interface Definition ---
 
 with gr.Blocks() as demo:
     gr.Markdown(
         """
-        # 🧠 Inférence MNIST W4A8 sur FPGA (Temps Réel)
-        Dessinez un chiffre (0-9) ci-dessous. Le réseau de neurones matériel prédira la classe en temps réel via le port série `COM8`.
-        *(Mode MOCK activé par défaut tant que le FPGA n'est pas branché)*
+        # 🧠 MNIST W4A8 Inference on FPGA (Real-Time)
+        Draw a digit (0-9) below. The hardware neural network will predict the class in real time via the `COM8` serial port.
         """
     )
     
     with gr.Row():
         with gr.Column():
-            # Sketchpad pour dessiner
+            # Sketchpad to draw
             pad = gr.Sketchpad(
-                label="Dessinez ici",
+                label="Draw here",
                 brush=gr.Brush(colors=["#000000"]),
                 type="numpy"
             )
         
         with gr.Column():
-            preview = gr.Image(label="Ce que voit le FPGA (28x28)", interactive=False)
+            preview = gr.Image(label="What the FPGA sees (28x28)", interactive=False)
             with gr.Row():
-                # Affichage des prédictions FPGA
+                # Display FPGA predictions
                 label_fpga = gr.Label(
                     num_top_classes=10, 
-                    label="Prédictions FPGA (W4A8)"
+                    label="FPGA Predictions (W4A8)"
                 )
-                # Affichage des prédictions PyTorch W4A8
+                # Display PyTorch W4A8 predictions
                 label_torch_w4a8 = gr.Label(
                     num_top_classes=10, 
                     label="PyTorch (W4A8 Bit-Exact)"
                 )
 
-    # Mode 'live' : Dès que l'utilisateur modifie le dessin (change), on lance l'inférence
+    # 'live' mode: As soon as the user modifies the drawing (change), we launch inference
     pad.change(fn=process_image, inputs=pad, outputs=[label_fpga, label_torch_w4a8, preview])
 
 if __name__ == "__main__":
-    logging.info("Lancement de l'interface web Gradio...")
+    logging.info("Launching Gradio web interface...")
     demo.launch(server_name="127.0.0.1", server_port=7860)

@@ -2,7 +2,9 @@
 
 > **100% Open-Source Toolchain**: This entire workflow relies exclusively on open-source tools. No proprietary code is used, and heavy vendor software like Vivado is not required to synthesize or flash the FPGA.
 
-This repository contains the hardware accelerator and software inference code for a Convolutional Neural Network (CNN) running on an FPGA (Tang Primer 20K). The Verilog hardware description was automatically generated using the [spinalML](https://github.com/Juste-Leo2/spinalML) library. 
+![MNIST Demo](docs/demo.gif)
+
+This repository contains the hardware accelerator and software inference code for a Convolutional Neural Network (CNN) running on an FPGA (Tang Primer 20K). The Verilog hardware description was automatically generated using the [spinalML](https://github.com/Juste-Leo2/spinalML) library. Furthermore, this system is capable of handling true, continuous real-time predictions: as you draw or modify a digit on the interface, the FPGA processes the byte stream and returns the logits for a seamless, live interaction.
 
 **spinalML** is a powerful toolset utilizing Verilator, Cocotb (Python), and formal verification to bridge the gap between machine learning and hardware description.
 
@@ -11,6 +13,16 @@ This repository contains the hardware accelerator and software inference code fo
 This CNN classifier targets the MNIST dataset using an aggressive mixed-precision quantization: **W4A8**.
 - **Conv2D**: Runs as a true INT4 matrix multiplication (weights stored as I4, activations as I8, I16 accumulator).
 - **Linear**: Uses FP8 (E4M3 format) for weights and activations, executed after an explicit `Cast` operation following the ReLU and MaxPool layers.
+
+### Model Performance & Limitations
+- **Network Size & Accuracy**: This network is intentionally very small to easily fit within the hardware constraints of the Tang Primer 20K. While it achieved approximately 90% accuracy on the validation dataset during training, it is not a highly robust model. As a result, the CNN may occasionally yield false positives or incorrect predictions on ambiguous drawings.
+- **Softmax Hardware Constraint**: A true Softmax operation is generally avoided in such hardware implementations because it only efficiently supports bases of $2^n$. Therefore, this accelerator outputs raw logits directly without computing Softmax. The Gradio web interface simply normalizes these raw logits linearly to display the confidence scores.
+- **Hardware vs PyTorch Divergence**: Replicating a hardware accelerator mathematically in Python reveals several divergences compared to ideal GPU execution. To save logic gates (LUTs), the FPGA incorporates aggressive optimizations:
+  - **Flush-to-Zero**: FP8 subnormal numbers are not supported and are explicitly crushed to zero by the hardware.
+  - **Truncation vs Rounding**: When casting from Int16 to FP8, the FPGA performs a strict bitwise truncation of the mantissa rather than a standard "Round-to-Nearest" operation.
+  - **Adder Tree Precision**: The FP8 addition tree drops precision at every intermediate accumulation node, unlike PyTorch's ideal FP32 global accumulator.
+  - **Constant Truncation**: Dequantization scales are compiled down to strict E4M3 literals, losing their original FP32 precision.
+  *(Note: While attempts were made to reproduce these hardware choices in `pytorch_replica.py` to simulate the FPGA, it does not perfectly reproduce the hardware behavior and some discrepancies still remain).*
 
 ### Verilog Generation (Scala)
 
