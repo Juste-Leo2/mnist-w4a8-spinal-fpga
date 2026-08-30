@@ -1,0 +1,19 @@
+// Tang Primer 20K (Gowin GW2A-18) Constraints
+
+// Horloge principale (27 MHz)
+IO_LOC "clk" H11;
+IO_PORT "clk" IO_TYPE=LVCMOS33 PULL_MODE=UP;
+
+// Reset (Optionnel, ici on peut l'assigner à un bouton physique ou le forcer à 1)
+// T10 est souvent le bouton User sur le Dock. S'il n'y a pas de bouton, on peut le laisser flottant 
+// ou modifier le top.v pour forcer reset_n à 1 si non utilisé.
+IO_LOC "reset_n" T10;
+IO_PORT "reset_n" IO_TYPE=LVCMOS33 PULL_MODE=UP;
+
+// UART RX (Connecté au TX du chip FTDI / PC)
+IO_LOC "uart_rx" T13;
+IO_PORT "uart_rx" IO_TYPE=LVCMOS33 PULL_MODE=UP;
+
+// UART TX (Connecté au RX du chip FTDI / PC)
+IO_LOC "uart_tx" M11;
+IO_PORT "uart_tx" IO_TYPE=LVCMOS33 PULL_MODE=UP;

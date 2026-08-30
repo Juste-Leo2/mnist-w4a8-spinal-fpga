@@ -1,0 +1,15 @@
+# Setup and dependencies
+info/
+
+# Python
+__pycache__/
+.venv/
+*.pyc
+
+# FPGA Build outputs
+top.json
+top_pnr.json
+top.fs
+
+# Misc
+.DS_Store
