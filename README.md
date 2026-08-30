@@ -15,6 +15,7 @@ This CNN classifier targets the MNIST dataset using an aggressive mixed-precisio
 - **Linear**: Uses FP8 (E4M3 format) for weights and activations, executed after an explicit `Cast` operation following the ReLU and MaxPool layers.
 
 ### Model Performance & Limitations
+- **Hardware Utilization**: Based on synthesis reports for the Tang Primer 20K, the hardware footprint is highly efficient. The design consumes approximately **10,020 LUTs** (526 LUT1, 1521 LUT2, 3541 LUT3, 4432 LUT4), 2,600 ALUs, and ~5,880 Registers (DFFs). It comfortably fits within the ~20K LUTs available on the board.
 - **Network Size & Accuracy**: This network is intentionally very small to easily fit within the hardware constraints of the Tang Primer 20K. While it achieved approximately 90% accuracy on the validation dataset during training, it is not a highly robust model. As a result, the CNN may occasionally yield false positives or incorrect predictions on ambiguous drawings.
 - **Softmax Hardware Constraint**: A true Softmax operation is generally avoided in such hardware implementations because it only efficiently supports bases of $2^n$. Therefore, this accelerator outputs raw logits directly without computing Softmax. The Gradio web interface simply normalizes these raw logits linearly to display the confidence scores.
 - **Hardware vs PyTorch Divergence**: Replicating a hardware accelerator mathematically in Python reveals several divergences compared to ideal GPU execution. To save logic gates (LUTs), the FPGA incorporates aggressive optimizations:
